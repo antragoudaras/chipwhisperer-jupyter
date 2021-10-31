@@ -9,9 +9,6 @@ import yaml
 import re
 import sys
 from pprint import pprint
-import logging
-import time
-import chipwhisperer as cw
 
 import nbformat
 import nbconvert
@@ -25,28 +22,25 @@ from nbconvert.nbconvertapp import NbConvertBase
 from functools import partial
 import builtins
 
-test_logger = logging.getLogger("ChipWhisperer Test")
-test_logger.setLevel(logging.INFO)
-
 script_path = os.path.abspath(__file__)
 tests_dir, _ = os.path.split(script_path)
 # set configuration options
 RSTExporter.template_paths = ['.', tests_dir]
 # RSTExporter.extra_template_basedirs = [tests_dir, tests_dir+'/rst_extended']
 RSTExporter.template_file = 'rst_extended.tpl'
-# NbConvertBase.display_data_priority = [
-#     'application/vnd.jupyter.widget-state+json',
-#     'application/vnd.jupyter.widget-view+json',
-#     'application/javascript',
-#     'application/vnd.bokehjs_exec.v0+json',
-#     'text/html',
-#     'text/markdown',
-#     'image/svg+xml',
-#     'text/latex',
-#     'image/png',
-#     'image/jpeg',
-#     'text/plain'
-# ]
+NbConvertBase.display_data_priority = [
+    'application/vnd.jupyter.widget-state+json',
+    'application/vnd.jupyter.widget-view+json',
+    'application/javascript',
+    'application/vnd.bokehjs_exec.v0+json',
+    'text/html',
+    'text/markdown',
+    'image/svg+xml',
+    'text/latex',
+    'image/png',
+    'image/jpeg',
+    'text/plain'
+]
 
 
 output = []
@@ -81,10 +75,10 @@ def put_all_kwargs_in_notebook(params, **kwargs):
             if p.name == kwarg:
                 in_params = True
         if in_params == False:
-            test_logger.debug(f"Inserting {kwarg}")
+            print(f"Inserting {kwarg}")
             params.append(Parameter(kwarg, str, kwargs[kwarg]))
 
-def execute_notebook(nb_path, serial_number=None, baud=None, hw_location=None, allow_errors=True, SCOPETYPE='OPENADC', PLATFORM='CWLITEARM', **kwargs):
+def execute_notebook(nb_path, serial_number=None, baud=None, allow_errors=True, SCOPETYPE='OPENADC', PLATFORM='CWLITEARM', **kwargs):
     """Execute a notebook via nbconvert and collect output.
        :returns (parsed nb object, execution errors)
     """
@@ -103,15 +97,12 @@ def execute_notebook(nb_path, serial_number=None, baud=None, hw_location=None, a
 
         ep = ExecutePreprocessor(timeout=None, kernel_name='python3', allow_errors=allow_errors)
 
-        if serial_number or baud or hw_location:
+        if serial_number or baud:
             ip = InLineCodePreprocessor(notebook_dir)
             # inline all code before doing any replacements
             nb, resources = ip.preprocess(nb, {})
 
         replacements = {}
-
-        if hw_location and serial_number:
-            print("Make error for this later")
 
         if serial_number:
             replacements.update({
@@ -125,12 +116,6 @@ def execute_notebook(nb_path, serial_number=None, baud=None, hw_location=None, a
             # })
             replacements.update({
                 r'(program_target\(.*)\)': r'\g<1>, baud={})'.format(baud)
-            })
-
-        if hw_location:
-            replacements.update({
-                r'cw.scope(\(\))': 'cw.scope(hw_location={})'.format(hw_location),
-                r'chipwhisperer.scope()': 'chipwhisperer.scope(hw_location={})'.format(hw_location)
             })
 
         # %matplotlib notebook won't show up in blank plots
@@ -197,12 +182,12 @@ def export_notebook(nb, nb_path, output_dir, SCOPETYPE=None, PLATFORM=None):
         for name in file_names:
             with open(os.path.join(output_dir, name), 'wb') as f:
                 f.write(res['outputs'][name])
-                test_logger.info('writing to '+ name)
+                print('writing to ', name)
             #print(res['outputs'][name])
 
 
         rst_file.write(body)
-        test_logger.info('Wrote to: '+ rst_path)
+        print('Wrote to: ', rst_path)
 
         ## need resources
 
@@ -212,18 +197,18 @@ def export_notebook(nb, nb_path, output_dir, SCOPETYPE=None, PLATFORM=None):
         body, res = html_exporter.from_notebook_node(nb)
 
         html_file.write(body)
-        test_logger.info('Wrote to: '+ html_path)
+        print('Wrote to: ', html_path)
 
 
-def _print_tracebacks(errors, config=None):
+def _print_tracebacks(errors):
     # to escape ANSI sequences use regex
     ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
     if errors == []:
-        test_logger.info("Passed all tests!")
+        print("Passed all tests!")
     for error in errors:
-        test_logger.warning("Test failed in cell {}: {}: {}".format(error[0], error[1]['ename'], error[1]['evalue']))
+        print("Test failed in cell {}: {}: {}".format(error[0], error[1]['ename'], error[1]['evalue']))
         for line in error[1]['traceback']:
-            test_logger.warning(ansi_escape.sub('', line))
+            print(ansi_escape.sub('', line))
 
 
 def _get_outputs(nb):
@@ -235,7 +220,7 @@ def _print_stderr(nb):
     printed_output = [[cell[0], output] for cell in outputs for output in cell[1]['outputs'] if
                       ('name' in output and output['name'] == 'stderr')]
     for out in printed_output:
-        test_logger.warning("[{}]:\n{}".format(out[0], out[1]['text']))
+        print("[{}]:\n{}".format(out[0], out[1]['text']))
 
 
 def _print_stdout(nb):
@@ -243,25 +228,24 @@ def _print_stdout(nb):
     printed_output = [[cell[0], output] for cell in outputs for output in cell[1]['outputs'] if
                       ('name' in output and output['name'] == 'stdout')]
     for out in printed_output:
-        test_logger.info("[{}]:\n{}".format(out[0], out[1]['text']))
+        print("[{}]:\n{}".format(out[0], out[1]['text']))
 
 
 def test_notebook(nb_path, output_dir, serial_number=None, export=True, allow_errors=True, print_first_traceback_only=True, print_stdout=False, print_stderr=False,
-                  allowable_exceptions=None, baud=None, hw_location=None, **kwargs):
+                  allowable_exceptions=None, baud=None, **kwargs):
     # reset output for next test
     output[:] = list()
     passed = False
-    test_logger.info("Testing: {}:...".format(os.path.abspath(nb_path)))
-    test_logger.info("with {}.".format(kwargs))
+    print()
+    print("Testing: {}:...".format(os.path.abspath(nb_path)))
+    print("with {}.".format(kwargs))
     if serial_number:
-        test_logger.info('on device with serial number {}.'.format(serial_number))
-    elif hw_location:
-        test_logger.info('on device at {}'.format(hw_location))
+        print('on device with serial number {}.'.format(serial_number))
     else:
-        test_logger.debug('No serial number specified... only bad if more than one device attached.')
-    nb, errors, export_kwargs = execute_notebook(nb_path, serial_number, hw_location=hw_location, allow_errors=allow_errors, allowable_exceptions=allowable_exceptions, baud=baud, **kwargs)
+        print('No serial number specified... only bad if more than one device attached.')
+    nb, errors, export_kwargs = execute_notebook(nb_path, serial_number, allow_errors=allow_errors, allowable_exceptions=allowable_exceptions, baud=baud, **kwargs)
     if not errors:
-        test_logger.info("PASSED")
+        print("PASSED")
         passed = True
         if export:
             export_notebook(nb, nb_path, output_dir, **export_kwargs)
@@ -269,21 +253,21 @@ def test_notebook(nb_path, output_dir, serial_number=None, export=True, allow_er
         if allowable_exceptions:
             error_is_acceptable = [error[1]['ename'] in allowable_exceptions for error in errors]
             if all(error_is_acceptable):
-                test_logger.info("PASSED with expected errors")
+                print("PASSED with expected errors")
                 passed = True
                 for error in errors:
-                    test_logger.info(error[1]['ename']+ ':'+ error[1]['evalue'])
+                    print(error[1]['ename'], ':', error[1]['evalue'])
                 if export:
                     export_notebook(nb, nb_path, output_dir, **export_kwargs)
             else:
-                test_logger.warning("FAILED {} config {}:".format(nb_path, kwargs))
+                print("FAILED {} config {}:".format(nb_path, kwargs))
                 passed = False
                 if print_first_traceback_only:
                     _print_tracebacks([error for i, error in enumerate(errors) if i == 0])
                 else:
                     _print_tracebacks(errors)
         else:
-            test_logger.warning("FAILED:")
+            print("FAILED:")
             passed = False
             if print_first_traceback_only:
                 _print_tracebacks([error for i, error in enumerate(errors) if i == 0])
@@ -404,7 +388,7 @@ class RegexReplacePreprocessor(nbconvert.preprocessors.Preprocessor):
         try:
             self.replacement_pairs = [(re.compile(regex), repl) for regex, repl in replacements.items()]
         except re.error as e:
-            test_logger.error('One of the regex compile failed, invalid regex.')
+            print('One of the regex compile failed, invalid regex.')
             sys.exit(0)
         super().__init__(**kw)
 
@@ -526,16 +510,13 @@ class InLineCodePreprocessor(nbconvert.preprocessors.Preprocessor):
         return cell, resources
 
 #need to separate into separate functions to multiprocess
-def run_test_hw_config(id, cw_dir, config, hw_location=None):
+def run_test_hw_config(id, config):
     tutorials, connected_hardware = load_configuration(config)
     summary = {'failed': 0, 'run': 0}
     hw_settings = connected_hardware[id]
-
-    nb_dir = os.path.join(cw_dir, 'jupyter')
-    output_dir = os.path.join(cw_dir, 'tutorials')
+    output_dir = '../../tutorials/'
+    nb_dir = '..'
     tests = {}
-    # if not hw_settings['enabled']:
-    #     return summary, tests
 
     # TODO: grab HW configuration settings
 
@@ -547,7 +528,7 @@ def run_test_hw_config(id, cw_dir, config, hw_location=None):
                     'SCOPETYPE': hw_settings['scope'],
                     'PLATFORM': hw_settings['target'],
                     'CRYPTO_TARGET': hw_settings['firmware'],
-                    # 'serial_number': hw_settings.get('serial number'),
+                    'serial_number': hw_settings.get('serial number'),
                     'VERSION': hw_settings['tutorial type'],
                     'SS_VER': test_config['ssver']
 
@@ -555,7 +536,7 @@ def run_test_hw_config(id, cw_dir, config, hw_location=None):
 
                 path = os.path.join(nb_dir, nb)
                 hw_kwargs = hw_settings.get('kwargs')
-                test_logger.debug("HW kwargs: {}".format(hw_kwargs))
+                print("HW kwargs: {}".format(hw_kwargs))
                 if hw_kwargs:
                     kwargs.update(hw_kwargs)
 
@@ -563,8 +544,8 @@ def run_test_hw_config(id, cw_dir, config, hw_location=None):
                 if tutorial_kwargs:
                     kwargs.update(tutorial_kwargs)
 
-                test_logger.debug("Testing {} with {} ({})".format(nb, id, kwargs))
-                passed, output = test_notebook(hw_location=hw_location, nb_path=path, output_dir=output_dir, **kwargs)
+                print("Testing {} with {} ({})".format(nb, id, kwargs))
+                passed, output = test_notebook(nb_path=path, output_dir=output_dir, **kwargs)
                 if not passed:
                     summary['failed'] += 1
                 summary['run'] += 1
@@ -573,27 +554,16 @@ def run_test_hw_config(id, cw_dir, config, hw_location=None):
             else:
                 pass # we don't need to test this hardware on this tutorial
 
-    time.sleep(0.5)
     return summary, tests
 
-def run_tests(cw_dir, config):
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+def run_tests(config):
+    from multiprocessing.pool import Pool
     tutorials, connected_hardware = load_configuration(config)
 
     num_hardware = len(connected_hardware)
-    hw_locations = []
-    for i in range(num_hardware):
-        if connected_hardware[i].get('serial number') is None:
-            hw_locations.append(None)
-            continue
-        scope = cw.scope(sn=str(connected_hardware[i]['serial number']))
-        hw_locations.append((scope._getNAEUSB().usbtx.device.getBusNumber(),\
-            scope._getNAEUSB().usbtx.device.getDeviceAddress()))
-        scope.dis()
-        #hw_locations.appe
 
-    nb_dir = os.path.join(cw_dir, 'jupyter')
-    output_dir = os.path.join(cw_dir, 'tutorials')
+    nb_dir = '..'
+    output_dir = '../../tutorials/'
 
     # copy the images from input to output directory
     # keeping them in the same relative directory
@@ -603,11 +573,11 @@ def run_tests(cw_dir, config):
     if not os.path.isdir(image_output_dir):
         os.mkdir(image_output_dir)
 
-    test_logger.info('Copying over image files...')
+    print('Copying over image files...', end='')
     for image_path in glob(os.path.join(image_input_dir, '*')):
         _, image_name = os.path.split(image_path)
         shutil.copyfile(image_path, os.path.join(image_output_dir, image_name))
-    test_logger.info('Done')
+    print('Done')
 
     # Run each on of the tutorials with each supported hardware
     # configuration for that tutorial and export the output
@@ -622,42 +592,25 @@ def run_tests(cw_dir, config):
     summary['all']['failed'] = 0
     summary['all']['run'] = 0
     results = []
-    test_logger.info("num hw: {}".format(num_hardware))
-    with ProcessPoolExecutor(max_workers=num_hardware) as nb_pool:
-        test_future = {nb_pool.submit(run_test_hw_config, i, cw_dir, config, hw_locations[i]): i for i in range(num_hardware)}
-        for future in as_completed(test_future):
-            hw_summary, hw_tests = future.result()
-            summary['all']['failed'] += hw_summary['failed']
-            summary['all']['run'] += hw_summary['run']
-            index = test_future[future]
-            summary[str(index)] = {'failed': hw_summary['failed'], 'run': hw_summary['run']}
-            # summary[str(index)]['failed'] += hw_summary['failed']
-            # summary[str(index)]['run'] += hw_summary['run']
-            tests.update(hw_tests)
+    with Pool(num_hardware) as nb_pool:
+        for i in range(num_hardware):
+            results.append(nb_pool.apply_async(run_test_hw_config, args=(i, config)))
 
-            with open("config_{}_log.txt".format(index), 'w') as f:
-                for header in hw_tests:
-                    f.write("Test {}, output:\n{}".format(header, hw_tests[header]))
-        # for i in range(num_hardware):
-        #     test_logger.debug("Running hw")
-        #     results.append(nb_pool.apply_async(run_test_hw_config, args=(i, config)))
+        try:
+            for index, result in enumerate(results):
+                hw_summary, hw_tests = result.get()
+                summary['all']['failed'] += hw_summary['failed']
+                summary['all']['run'] += hw_summary['run']
+                summary[str(index)] = {'failed': hw_summary['failed'], 'run': hw_summary['run']}
+                # summary[str(index)]['failed'] += hw_summary['failed']
+                # summary[str(index)]['run'] += hw_summary['run']
+                tests.update(hw_tests)
 
-        # try:
-        #     for index, result in enumerate(results):
-                # hw_summary, hw_tests = result.get()
-                # summary['all']['failed'] += hw_summary['failed']
-                # summary['all']['run'] += hw_summary['run']
-                # summary[str(index)] = {'failed': hw_summary['failed'], 'run': hw_summary['run']}
-                # # summary[str(index)]['failed'] += hw_summary['failed']
-                # # summary[str(index)]['run'] += hw_summary['run']
-                # tests.update(hw_tests)
-
-                # with open("config_{}_log.txt".format(index), 'w') as f:
-                #     for header in hw_tests:
-                #         f.write("Test {}, output:\n{}".format(header, hw_tests[header]))
-        # except Exception as e:
-        #     nb_pool.terminate()
-        #     test_logger.error(e)
+                with open("config_{}_log.txt".format(index), 'w') as f:
+                    for header in hw_tests:
+                        f.write("Test {}, output:\n{}".format(header, hw_tests[header]))
+        except:
+            nb_pool.terminate()
 
     try:
         shutil.rmtree('projects')
@@ -665,6 +618,61 @@ def run_tests(cw_dir, config):
         pass
 
     return summary, tests
+    # for nb in tutorials.keys():
+    #     for test_config in tutorials[nb]['configurations']:
+    #         match, matched_config = matching_connected_configuration(test_config, connected_hardware)
+    #         serial_number = None
+    #         if match:
+    #             serial_number = matched_config.get('serial number')
+    #             path = os.path.join(nb_dir, nb)
+
+    #             kwargs = {
+    #                 'SCOPETYPE': test_config['scope'],
+    #                 'PLATFORM': test_config['target'],
+    #                 'CRYPTO_TARGET': test_config['firmware'],
+    #                 'SS_VER': test_config['ssver'],
+    #             }
+
+    #             tutorial_specific_kwargs = tutorials[nb].get('kwargs')
+    #             connected_config_kwargs = matched_config.get('kwargs')
+
+    #             # The connected configuration kwargs can be overwritten by
+    #             # tutorial specific_kwargs
+    #             if connected_config_kwargs:
+    #                 kwargs.update(connected_config_kwargs)
+
+    #             if tutorial_specific_kwargs:
+    #                 kwargs.update(tutorial_specific_kwargs)
+
+
+    #             passed, output = test_notebook(nb_path=path, output_dir=output_dir, serial_number=serial_number,
+    #                                            **kwargs)
+    #             if not summary.get(test_config['target']):
+    #                 summary[test_config['target']] = {}
+    #                 summary[test_config['target']]['failed'] = 0
+    #                 summary[test_config['target']]['run'] = 0
+
+    #             if not passed:
+    #                 summary[test_config['target']]['failed'] += 1
+    #                 summary['all']['failed'] += 1
+
+    #             summary[test_config['target']]['run'] += 1
+    #             summary['all']['run'] += 1
+
+    #             if passed:
+    #                 header = 'PASSED: {} using {}'.format(nb, test_config['target'])
+    #             else:
+    #                 header = 'FAILED: {} using {}'.format(nb, test_config['target'])
+    #             tests[header] = output
+
+    # clean up the projects created by running the tutorial notebooks.
+    try:
+        shutil.rmtree('projects')
+    except FileNotFoundError:
+        pass
+
+    return summary, tests
+
 
 if __name__ == '__main__':
     script, config_file_path = sys.argv
