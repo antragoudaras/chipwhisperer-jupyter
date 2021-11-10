@@ -1,5 +1,5 @@
 [Trace Management]
-tracefile0 = Lab_Resync_data/traces/config_2021.11.08-22.19.42_0.cfg
+tracefile0 = Lab_Resync_data/traces/config_2021.11.09-17.29.43_0.cfg
 enabled0 = True
 [ChipWhisperer]
 [[General Settings]]
