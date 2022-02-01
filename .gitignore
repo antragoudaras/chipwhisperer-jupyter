@@ -34,3 +34,5 @@ hardware/victims/firmware/simpleserial-aes-auth/simpleserial-aes-auth-CW*
 project/*
 html/*
 jupyter-backup/*
+## my ignore files
+*.pickle

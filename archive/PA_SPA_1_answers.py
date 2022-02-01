@@ -7,6 +7,7 @@ def find_offset_SAD(ref, target_trace, threshold):
     for offset in range(len(target_trace) - len(ref)):
         if calc_SAD(ref, target_trace[offset:offset+len(ref)]) < threshold:
             return offset
+    return None
         
 def guess_password_SAD(cap_pass_trace, find_offset, ref, original_offset, threshold, target):
     trylist = "abcdefghijklmnopqrstuvwxyz0123456789"
